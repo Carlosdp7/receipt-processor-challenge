@@ -9,7 +9,7 @@ app.use(cors());
 
 app.use(express.json());
 
-const receipts = [];
+const receipts = new Map();
 const requiredFields = [
   "retailer",
   "purchaseDate",
@@ -57,22 +57,24 @@ app.post("/receipts/process", (req, res) => {
     return res.status(400).send("The receipt is invalid");
   }
 
-  const newReceipt = {
-    id: uuid(),
-    ...req.body,
-  };
-
-  receipts.push(newReceipt);
+  const newReceiptId = uuid();
+  receipts.set(newReceiptId, {
+    retailer,
+    purchaseDate,
+    purchaseTime,
+    items,
+    total,
+  });
 
   res.send({
-    id: newReceipt.id,
+    id: newReceiptId,
   });
 });
 
 app.get("/receipts/:id/points", (req, res) => {
   const receiptId = req.params.id;
 
-  const receipt = receipts.find((receipt) => receipt.id === receiptId);
+  const receipt = receipts.get(receiptId);
 
   if (!receipt) {
     return res.status(404).send("No receipt found for that id");
@@ -106,6 +108,23 @@ app.get("/receipts/:id/points", (req, res) => {
       points += Math.ceil(parseFloat(item.price) * 0.2);
     }
   });
+
+  // 5 points if all items are unique
+  const itemHT = new Set();
+  let areUniques = true;
+  receipt.items.forEach((item) => {
+    const key = `${item.shortDescription}-${item.price}`;
+
+    if (itemHT.has(key)) {
+      areUniques = false;
+    } else {
+      itemHT.add(key);
+    }
+  });
+
+  if (areUniques) {
+    points += receipt.items.length * 5;
+  }
 
   // 6 points if the day in the purchase date is odd.
   const purchaseDate = moment(receipt.purchaseDate);
